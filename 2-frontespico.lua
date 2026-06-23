@@ -1,5 +1,5 @@
 --[[
-2-bookopen-splash — KOReader userpatch that replaces the
+2-frontespico — KOReader userpatch that replaces the
 "Opening file '<path>'." popup on book open with a centred
 author + title splash.
 
@@ -107,10 +107,10 @@ ReaderUI.showReaderCoroutine = function(self, file, provider, seamless)
     end
     local ok, splash = pcall(build_splash, file)
     if not ok or not splash then
-        logger.warn("bookopen-splash: falling back to original popup:", splash)
+        logger.warn("frontespico: falling back to original popup:", splash)
         return _orig(self, file, provider, seamless)
     end
-    logger.info("bookopen-splash: showing splash for", file)
+    logger.info("frontespico: showing splash for", file)
     UIManager:show(splash)
     UIManager:forceRePaint()
     UIManager:nextTick(function()

@@ -1,4 +1,4 @@
-# koreader-bookopen-splash
+# koreader-frontespico
 
 A [KOReader](https://github.com/koreader/koreader) [user patch](https://github.com/koreader/koreader/wiki/User-patches) that replaces the file-path popup shown while a book opens —
 
@@ -12,7 +12,7 @@ It covers every way a book opens: tapping it in the file browser, history, "open
 
 ## Install
 
-Copy `2-bookopen-splash.lua` into the `patches/` directory next to your KOReader settings (create it if it doesn't exist):
+Copy `2-frontespico.lua` into the `patches/` directory next to your KOReader settings (create it if it doesn't exist):
 
 | Platform | Path |
 |---|---|
@@ -20,7 +20,7 @@ Copy `2-bookopen-splash.lua` into the `patches/` directory next to your KOReader
 | Kobo / Kindle / PocketBook | `koreader/patches/` on the device |
 | Android | `koreader/patches/` in KOReader's storage folder |
 
-Restart KOReader. The patch logs `Applying patch: …/2-bookopen-splash.lua` on startup.
+Restart KOReader. The patch logs `Applying patch: …/2-frontespico.lua` on startup.
 
 ## How it works
 

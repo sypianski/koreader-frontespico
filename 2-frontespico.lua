@@ -61,11 +61,21 @@ local function lookup_cover_bb(file)
     -- Returns nil if coverbrowser is missing or the book hasn't been
     -- scanned yet. We never call extractBookInfo synchronously — that
     -- would defeat the speed gain by decoding the EPUB at startup.
+    -- BookInfoManager lives inside coverbrowser.koplugin and uses a bare
+    -- require("bookinfomanager"). From a userpatch its directory isn't on
+    -- package.path, so we splice it in for one dofile.
+    local cb_dir = "plugins/coverbrowser.koplugin/"
+    local saved_path = package.path
+    package.path = cb_dir .. "?.lua;" .. package.path
     local ok, bookinfo = pcall(function()
-        local BookInfoManager = require("plugins/coverbrowser.koplugin/bookinfomanager")
+        local BookInfoManager = dofile(cb_dir .. "bookinfomanager.lua")
         return BookInfoManager:getBookInfo(file, true)
     end)
-    if not ok or not bookinfo or not bookinfo.has_cover then return nil end
+    package.path = saved_path
+    if not ok then logger.warn("frontespico: cover load err:", bookinfo); return nil end
+    if not bookinfo then logger.info("frontespico: no bookinfo row for", file); return nil end
+    if not bookinfo.has_cover then logger.info("frontespico: bookinfo has_cover=false for", file); return nil end
+    logger.info("frontespico: cover_bb loaded, w=", bookinfo.cover_w, "h=", bookinfo.cover_h)
     return bookinfo.cover_bb
 end
 
@@ -90,36 +100,27 @@ local function build_text_body(file, max_w)
     return body
 end
 
-local function build_cover_body(cover_bb, max_w, max_h)
-    -- Scale the cached BB to fit inside the splash box while preserving
-    -- aspect ratio. ImageWidget handles scaling lazily on paint.
-    local cw, ch = cover_bb:getWidth(), cover_bb:getHeight()
-    local scale_w = max_w / cw
-    local scale_h = max_h / ch
-    local scale = math.min(scale_w, scale_h, 1.0)
-    local target_w = math.floor(cw * scale)
-    local target_h = math.floor(ch * scale)
+local function build_cover_body(cover_bb)
+    -- 1:1 — no upscale (blurry pixels), no downscale (loses detail).
+    -- Just paint the cached BB at native size, centred.
     local body = VerticalGroup:new{ align = "center" }
     table.insert(body, ImageWidget:new{
-        image       = cover_bb,
-        width       = target_w,
-        height      = target_h,
-        scale_factor = 0,
+        image            = cover_bb,
+        scale_factor     = 1,
+        image_disposable = false,
     })
     return body
 end
 
 local function build_splash(file)
-    local max_w = math.floor(Screen:getWidth() * 0.7)
-    if max_w > Screen:scaleBySize(420) then max_w = Screen:scaleBySize(420) end
-    local max_h = math.floor(Screen:getHeight() * 0.7)
-
+    local text_max_w = math.min(math.floor(Screen:getWidth() * 0.7),
+                                Screen:scaleBySize(420))
     local body
     local cover_bb = lookup_cover_bb(file)
     if cover_bb then
-        body = build_cover_body(cover_bb, max_w, max_h)
+        body = build_cover_body(cover_bb)
     else
-        body = build_text_body(file, max_w)
+        body = build_text_body(file, text_max_w)
     end
 
     local im = InfoMessage:new{

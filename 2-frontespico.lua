@@ -8,9 +8,9 @@ cache misses (first open, or coverbrowser plugin disabled).
 Cover lookup uses BookInfoManager (coverbrowser plugin's zstd-cached
 thumbnails) — no document open, no decode work in the startup path.
 
-forceRePaint is intentionally omitted: e-paper refresh blocks startup
-for hundreds of ms on slow hardware (RPi). The splash paints on the
-natural nextTick cycle alongside the reader open.
+forceRePaint is kept: without it the splash never reaches the
+framebuffer before doShowReader overwrites it. The ~hundreds of ms
+cost on slow hardware is the price of actually seeing the splash.
 ]]
 
 local ReaderUI      = require("apps/reader/readerui")
@@ -147,7 +147,7 @@ ReaderUI.showReaderCoroutine = function(self, file, provider, seamless)
     end
     logger.info("frontespico: showing splash for", file)
     UIManager:show(splash)
-    -- No forceRePaint: see header comment.
+    UIManager:forceRePaint()
     UIManager:nextTick(function()
         local co = coroutine.create(function()
             self:doShowReader(file, provider, seamless)

@@ -1,21 +1,16 @@
 --[[
-2-frontespico — KOReader userpatch that replaces the
-"Opening file '<path>'." popup on book open with a centred
-author + title splash.
+2-frontespico — KOReader userpatch.
 
-Why a userpatch and not a plugin: plugins are loaded inside
-ReaderUI:init — *after* showReaderCoroutine has already shown the
-popup for the book KOReader auto-opens at launch ("start with last
-file"). Priority-2 userpatches are applied after UIManager is ready
-but before that startup open, so this hook covers every code path.
+Replaces the "Opening file '<path>'." popup on book open with a centred
+cover-image splash, falling back to author + title text when the cover
+cache misses (first open, or coverbrowser plugin disabled).
 
-Metadata comes from the book's .sdr sidecar (doc_props), so author and
-title appear from the second open onward; on the very first open of a
-file the splash falls back to a cleaned-up filename.
+Cover lookup uses BookInfoManager (coverbrowser plugin's zstd-cached
+thumbnails) — no document open, no decode work in the startup path.
 
-Optional: if the KoTheme plugin's settings file exists
-(settings/kotheme.lua), its enabled flag also toggles this splash.
-Without it the splash is always on.
+forceRePaint is intentionally omitted: e-paper refresh blocks startup
+for hundreds of ms on slow hardware (RPi). The splash paints on the
+natural nextTick cycle alongside the reader open.
 ]]
 
 local ReaderUI      = require("apps/reader/readerui")
@@ -27,6 +22,7 @@ local DocSettings   = require("docsettings")
 local Font          = require("ui/font")
 local LuaSettings   = require("luasettings")
 local Size          = require("ui/size")
+local ImageWidget   = require("ui/widget/imagewidget")
 local TextBoxWidget = require("ui/widget/textboxwidget")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan  = require("ui/widget/verticalspan")
@@ -60,12 +56,21 @@ local function lookup_book_meta(file)
     return { title = title, author = author }
 end
 
-local function build_splash(file)
+local function lookup_cover_bb(file)
+    -- Pull the cached cover from BookInfoManager (coverbrowser plugin).
+    -- Returns nil if coverbrowser is missing or the book hasn't been
+    -- scanned yet. We never call extractBookInfo synchronously — that
+    -- would defeat the speed gain by decoding the EPUB at startup.
+    local ok, bookinfo = pcall(function()
+        local BookInfoManager = require("plugins/coverbrowser.koplugin/bookinfomanager")
+        return BookInfoManager:getBookInfo(file, true)
+    end)
+    if not ok or not bookinfo or not bookinfo.has_cover then return nil end
+    return bookinfo.cover_bb
+end
+
+local function build_text_body(file, max_w)
     local meta = lookup_book_meta(file)
-
-    local max_w = math.floor(Screen:getWidth() * 0.7)
-    if max_w > Screen:scaleBySize(420) then max_w = Screen:scaleBySize(420) end
-
     local body = VerticalGroup:new{ align = "center" }
     if meta.author then
         table.insert(body, TextBoxWidget:new{
@@ -82,16 +87,46 @@ local function build_splash(file)
         alignment = "center",
         width     = max_w,
     })
+    return body
+end
 
-    -- InfoMessage shell: same timeout=0.0 trick as the upstream popup —
-    -- the scheduled close only fires once the event loop regains control,
-    -- i.e. after the reader has loaded and painted.
+local function build_cover_body(cover_bb, max_w, max_h)
+    -- Scale the cached BB to fit inside the splash box while preserving
+    -- aspect ratio. ImageWidget handles scaling lazily on paint.
+    local cw, ch = cover_bb:getWidth(), cover_bb:getHeight()
+    local scale_w = max_w / cw
+    local scale_h = max_h / ch
+    local scale = math.min(scale_w, scale_h, 1.0)
+    local target_w = math.floor(cw * scale)
+    local target_h = math.floor(ch * scale)
+    local body = VerticalGroup:new{ align = "center" }
+    table.insert(body, ImageWidget:new{
+        image       = cover_bb,
+        width       = target_w,
+        height      = target_h,
+        scale_factor = 0,
+    })
+    return body
+end
+
+local function build_splash(file)
+    local max_w = math.floor(Screen:getWidth() * 0.7)
+    if max_w > Screen:scaleBySize(420) then max_w = Screen:scaleBySize(420) end
+    local max_h = math.floor(Screen:getHeight() * 0.7)
+
+    local body
+    local cover_bb = lookup_cover_bb(file)
+    if cover_bb then
+        body = build_cover_body(cover_bb, max_w, max_h)
+    else
+        body = build_text_body(file, max_w)
+    end
+
     local im = InfoMessage:new{
         text      = " ",
         show_icon = false,
         timeout   = 0.0,
     }
-    -- Swap the default icon+text row for our centred body.
     local frame = im.movable and im.movable[1]
     if not frame then return nil end
     frame[1] = body
@@ -112,7 +147,7 @@ ReaderUI.showReaderCoroutine = function(self, file, provider, seamless)
     end
     logger.info("frontespico: showing splash for", file)
     UIManager:show(splash)
-    UIManager:forceRePaint()
+    -- No forceRePaint: see header comment.
     UIManager:nextTick(function()
         local co = coroutine.create(function()
             self:doShowReader(file, provider, seamless)

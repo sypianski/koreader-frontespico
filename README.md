@@ -2,7 +2,7 @@
 
 [KOReader](https://github.com/koreader/koreader) [user patch](https://github.com/koreader/koreader/wiki/User-patches) that replaces the "Opening file '/long/path/…'" popup with a centred author + title splash from the book's `.sdr` sidecar.
 
-![Splash showing author above the book title in a centred rounded frame](screenshot.png)
+![Splash showing author above the book title in a centred rounded frame instead of the filepath and filename](screenshot.png)
 
 ## Install
 
